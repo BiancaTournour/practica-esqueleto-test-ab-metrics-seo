@@ -2,29 +2,30 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Esqueleto',
+  title: 'Laboratorio 01',
   robots: { index: false, follow: false },
 }
 
 const FILES = [
-  ['proxy.ts', 'Asignar visitante y variante. Anotar una impresión por sesión.'],
-  ['lib/experiment.ts', 'Hash, tasa y validación del log. El copy y el caso de prueba ya están.'],
-  ['app/practica/page.tsx', 'Publicar title, description y un canonical único.'],
+  ['proxy.ts', 'Asigna visitante y variante. Anota una impresión por sesión de 30 minutos.'],
+  ['lib/experiment.ts', 'Hash estable, tasa y validación del log. Copy y caso de prueba.'],
+  ['app/practica/page.tsx', 'Title, description, canonical único y noindex en el preview.'],
   ['app/practica/actions.ts', 'Una conversión por visitante, solo con el CTA.'],
-  ['app/bitacora/page.tsx', 'Mostrar la tasa. El caso fijo tiene que dar 7,50% y 13,14%.'],
+  ['lib/store.ts', 'Log de eventos en una base (Redis por REST; archivo local en desarrollo).'],
+  ['app/bitacora/page.tsx', 'Tasa, diferencia en pp y caso fijo: 7,50%, 13,14% y 5,64 pp.'],
 ]
 
 export default function HomePage() {
   return (
     <main id="contenido" className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-14">
       <p className="font-mono text-[0.7rem] tracking-[0.16em] text-muted-foreground uppercase">
-        Laboratorio 01 · esqueleto
+        Laboratorio 01 · resuelto
       </p>
       <h1 className="font-serif text-4xl leading-tight tracking-tight text-balance md:text-5xl">
-        El copy está. El mecanismo, no.
+        Una landing, dos mensajes, una sola URL indexable.
       </h1>
       <p className="text-lg leading-relaxed text-muted-foreground">
-        Taller Norte ya tiene los dos mensajes, la oferta y el caso de prueba. Hay que asignar la variante, publicar los metadatos y calcular la tasa. La consigna la da la cátedra.
+        Taller Norte prueba dos mensajes sobre la misma oferta. La variante se asigna con un hash estable, los metadatos se publican desde el servidor y el canonical es siempre /practica.
       </p>
       <div className="flex flex-wrap gap-2">
         <Link href="/practica" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">

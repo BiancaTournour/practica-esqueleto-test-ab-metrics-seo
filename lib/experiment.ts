@@ -7,13 +7,23 @@ export type VariantStats = {
 
 export type ExperimentLog = Record<Variant, VariantStats>
 
+// Visitante y variante viven en la cookie. Los conteos NO: van a la base (lib/store.ts).
 export const COOKIE = {
   visitor: 'lab_visitor',
   variant: 'lab_variant',
-  log: 'lab_log',
   impressed: 'lab_impressed',
   converted: 'lab_converted',
 } as const
+
+// Cabeceras internas que el proxy le pasa a la página en el mismo request.
+// El proxy las pisa siempre, así que un cliente no puede falsificarlas.
+export const HEADER = {
+  variant: 'x-lab-variant',
+  source: 'x-lab-source',
+} as const
+
+// De dónde sale la variante que se está mostrando.
+export type VariantSource = 'cookie' | 'preview' | 'crawler'
 
 export const THIRTY_DAYS = 60 * 60 * 24 * 30
 export const SESSION_WINDOW = 60 * 30
@@ -71,14 +81,50 @@ export function emptyLog(): ExperimentLog {
   }
 }
 
-export function assignVariant(_visitorId: string): Variant {
-  // TODO: hash estable. El mismo id tiene que devolver siempre la misma variante.
-  return 'a'
+// Función de hash documentada: FNV-1a de 32 bits + finalizador fmix32 de MurmurHash3.
+// FNV-1a sola deja sesgo en el bit bajo para ids parecidos; fmix32 mezcla todos los bits
+// antes de tomar el módulo. Es pura y síncrona: sin Math.random(), sin Date, sin I/O.
+export const HASH_NAME = 'FNV-1a 32 bits + fmix32 (MurmurHash3), módulo 2'
+export const HASH_SALT = 'taller-norte-lab01'
+
+export function hashString(input: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  h ^= h >>> 16
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  h ^= h >>> 16
+  return h >>> 0
 }
 
-export function conversionRate(_stats: VariantStats): number | null {
-  // TODO: conversiones / impresiones. Sin impresiones, devolver null, no 0.
-  return null
+export function assignVariant(visitorId: string): Variant {
+  // Par -> A (control), impar -> B (tratamiento). El mismo id da siempre lo mismo.
+  return hashString(`${HASH_SALT}:${visitorId}`) % 2 === 0 ? 'a' : 'b'
+}
+
+const VISITOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+// La cookie la controla el cliente: se valida antes de usarla.
+export function isVisitorId(value: string | null | undefined): value is string {
+  return typeof value === 'string' && VISITOR_ID.test(value)
+}
+
+// Crawlers y previews de links. No son visitantes del experimento.
+const BOT_PATTERN =
+  /bot|crawl|spider|slurp|mediapartners|facebookexternalhit|embedly|headlesschrome|lighthouse|inspectiontool/i
+
+export function isCrawler(userAgent: string | null | undefined): boolean {
+  return typeof userAgent === 'string' && BOT_PATTERN.test(userAgent)
+}
+
+export function conversionRate(stats: VariantStats): number | null {
+  // Sin impresiones la tasa no existe: null, no 0.
+  if (!Number.isFinite(stats.impressions) || stats.impressions <= 0) return null
+  return stats.conversions / stats.impressions
 }
 
 export function rateGap(log: ExperimentLog): number | null {
@@ -88,9 +134,31 @@ export function rateGap(log: ExperimentLog): number | null {
   return (treatment - control) * 100
 }
 
-export function parseLog(_raw: string | undefined): ExperimentLog {
-  // TODO: validar el JSON antes de usarlo. Si falla, log vacío.
-  return emptyLog()
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function isStats(value: unknown): value is VariantStats {
+  if (typeof value !== 'object' || value === null) return false
+  const { impressions, conversions } = value as Record<string, unknown>
+  return isCount(impressions) && isCount(conversions)
+}
+
+// Valida lo que viene de afuera (base, JSON) antes de usarlo. Si algo no cierra, log vacío.
+export function parseLog(raw: string | undefined): ExperimentLog {
+  if (!raw) return emptyLog()
+  try {
+    const data: unknown = JSON.parse(raw)
+    if (typeof data !== 'object' || data === null) return emptyLog()
+    const { a, b } = data as Record<string, unknown>
+    if (!isStats(a) || !isStats(b)) return emptyLog()
+    return {
+      a: { impressions: a.impressions, conversions: a.conversions },
+      b: { impressions: b.impressions, conversions: b.conversions },
+    }
+  } catch {
+    return emptyLog()
+  }
 }
 
 export function serializeLog(log: ExperimentLog): string {

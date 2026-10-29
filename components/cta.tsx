@@ -1,10 +1,23 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { recordConversion } from '@/app/practica/actions'
+import { recordConversion, type ConversionStatus } from '@/app/practica/actions'
 
-export function Cta({ label }: { label: string }) {
-  const [tried, setTried] = useState(false)
+const MESSAGES: Record<ConversionStatus, string> = {
+  recorded: 'Listo: tu lugar quedó anotado.',
+  duplicate: 'Ya habías hecho clic antes. No se suma otra conversión.',
+  ignored: 'No se anotó: este navegador no tiene un visitante asignado.',
+  error: 'No pudimos anotar el clic. Probá de nuevo en un momento.',
+}
+
+type CtaProps = {
+  label: string
+  /** En ?preview= el botón se ve y se puede tocar, pero no anota nada. */
+  preview?: boolean
+}
+
+export function Cta({ label, preview = false }: CtaProps) {
+  const [status, setStatus] = useState<ConversionStatus | 'preview' | null>(null)
   const [pending, startTransition] = useTransition()
 
   return (
@@ -13,19 +26,27 @@ export function Cta({ label }: { label: string }) {
         type="button"
         disabled={pending}
         onClick={() => {
+          if (preview) {
+            setStatus('preview')
+            return
+          }
           startTransition(async () => {
-            await recordConversion()
-            setTried(true)
+            const result = await recordConversion()
+            setStatus(result.status)
           })
         }}
         className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
       >
         {label}
       </button>
-      <p className="max-w-md text-sm text-muted-foreground">
-        {tried
-          ? 'Pendiente: el clic llegó, pero no queda anotada ninguna conversión.'
-          : 'La conversión se anota solo acá. Cargar la página no cuenta.'}
+      <p className="max-w-md text-sm text-muted-foreground" role="status" aria-live="polite">
+        {status === 'preview'
+          ? 'Vista previa: este clic no cuenta como conversión.'
+          : status
+            ? MESSAGES[status]
+            : preview
+              ? 'Vista previa: el botón no anota conversiones.'
+              : ''}
       </p>
     </div>
   )
